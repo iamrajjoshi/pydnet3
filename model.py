@@ -8,7 +8,6 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 
 import pydnet
-# from bilinear_torch import * # ported from Godard's code
 from bilinear_sampler import *  # from Po-Hsun Su
 import pytorch_ssim
 import utils.util as util
@@ -50,7 +49,7 @@ class model(nn.Module):
         else:
             raise NotImplementedError('Network %s is not found' % self.opt.netG)
 
-        print(self.G)
+#         print(self.G)
 
         if opt.gpu_ids > -1:
             assert (torch.cuda.is_available())
@@ -103,11 +102,9 @@ class model(nn.Module):
                         self.G.load_state_dict(model_dict)
 
     def generate_image_left_(self, img, disp):
-        # return bilinear_sampler_1d_h(img, -disp)
-        return apply_disparity(img, -disp)
+       return apply_disparity(img, -disp)  
 
     def generate_image_right_(self, img, disp):
-        # return bilinear_sampler_1d_h(img, disp)
         return apply_disparity(img, -disp)
 
     def gradient_x(self, img):
@@ -136,37 +133,15 @@ class model(nn.Module):
 
         return smoothness_x + smoothness_y
 
-    # ssim from Godard's code
-    def SSIM(self, x, y):
-        C1 = 0.01 ** 2
-        C2 = 0.03 ** 2
-
-        mu_x = nn.functional.avg_pool2d(x, 3, 1, padding=0)
-        mu_y = nn.functional.avg_pool2d(y, 3, 1, padding=0)
-
-        sigma_x = nn.functional.avg_pool2d(x ** 2, 3, 1, padding=0) - mu_x ** 2
-        sigma_y = nn.functional.avg_pool2d(y ** 2, 3, 1, padding=0) - mu_y ** 2
-
-        sigma_xy = nn.functional.avg_pool2d(x * y, 3, 1, padding=0) - mu_x * mu_y
-
-        SSIM_n = (2 * mu_x * mu_y + C1) * (2 * sigma_xy + C2)
-        SSIM_d = (mu_x ** 2 + mu_y ** 2 + C1) * (sigma_x + sigma_y + C2)
-
-        SSIM = SSIM_n / SSIM_d
-
-        return torch.clamp((1 - SSIM) / 2, 0, 1)
-
     # ssim from Po-Hsun Su
     def SSIM_(self, x, y):
-
         ssim_loss = pytorch_ssim.SSIM()
-
         return torch.clamp(1 - ssim_loss(x, y) / 2, 0, 1)
 
     def scale_pyramid_(self, img, num_scales):
         img = torch.mean(img, 1)
         img = torch.unsqueeze(img, 1)
-        scaled_imgs = [img]
+        scaled_imgs = [] # scaled images = [img]
         s = img.size()
         h = int(s[2])
         w = int(s[3])
@@ -174,31 +149,15 @@ class model(nn.Module):
             ratio = 2 ** (i + 1)
             nh = h // ratio
             nw = w // ratio
-            temp = nn.functional.upsample(img, [nh, nw], mode='nearest')
-            scaled_imgs.append(temp)
-        return scaled_imgs
-
-    def scale_pyramid(self, img, num_scales):
-        scaled_imgs = [img]
-        s = img.size()
-        h = int(s[2])
-        w = int(s[3])
-        for i in range(num_scales - 1):
-            ratio = 2 ** (i + 1)
-            nh = h // ratio
-            nw = w // ratio
-            temp = nn.functional.upsample(img, [nh, nw], mode='bilinear')
+            temp = nn.functional.interpolate(img, size=[nh, nw], mode='bilinear')
             scaled_imgs.append(temp)
         return scaled_imgs
 
     def inference(self, test_input):
-
         self.test_disp = self.G(test_input)
-
         return self.test_disp[0]
 
     def forward(self, input_left, input_right):
-
         self.left_pyramid = self.scale_pyramid_(input_left, 6)
         self.right_pyramid = self.scale_pyramid_(input_right, 6)
         self.input = input_left

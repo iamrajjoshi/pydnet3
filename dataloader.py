@@ -9,6 +9,7 @@ import torchvision.transforms as transforms
 from base_dataloader import BaseDataset, get_params, get_transform, normalize
 
 
+# +
 class StereoDataloader(Dataset):
     __left = []
     __right = []
@@ -16,30 +17,30 @@ class StereoDataloader(Dataset):
     def __init__(self, opt):
         self.opt = opt
         
-        for root, dirs, files in os.walks(self.opt.dataroot):
+        for root, dirs, files in os.walk(self.opt.dataroot):
             for file in files:
-                if file.endswith(".png"):
+                if file.endswith(".jpg"):
                     file_path = os.path.join(root, file)
                     if "Camera_0" in file_path:
                         self.__left.append(file_path)
                     else:
                         self.__right.append(file_path)
 
-
     def __getitem__(self, index):
         left_img = Image.open(self.__left[index]).convert('RGB')
         right_img = Image.open(self.__right[index]).convert('RGB')
-
+        
         params = get_params(self.opt, left_img.size)
 
-        arg = random.random() > 0.5
-        if arg:
-            left_img, right_img = self.augument_image_pair(left_img, right_img)
+#         arg = random.random() > 0.5
+#         if arg:
+#             left_img, right_img = self.augument_image_pair(left_img, right_img)
 
         transform = get_transform(self.opt, params)
+
         left_img = transform(left_img)
         right_img = transform(right_img)
-
+        
         input_dict = {'left_img': left_img.cuda(), 'right_img': right_img.cuda()}
 
         return input_dict

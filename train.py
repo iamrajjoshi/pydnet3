@@ -20,7 +20,7 @@ if opt.isTrain:
 	data_loader = StereoDataloader(opt) # create dataloader
 	train_data = DataLoader(data_loader, batch_size=opt.batchsize, shuffle=True)#, num_workers=1)
 	dataset_size = len(data_loader)
-	print('#training images: %d' %dataset_size)
+	print('# training images: %d' %dataset_size)
 else:
 	# loading test images
 	from dataloader_test import StereoDataloader_test

@@ -16,7 +16,7 @@ class StereoDataloader_test(Dataset):
 
         for root, dirs, files in os.walks(self.opt.dataroot):
             for file in files:
-                if file.endswith(".png"):
+                if file.endswith(".jpg"):
                     file_path = os.path.join(root, file)
                     if "Camera_0" in file_path:
                         self.__left.append(file_path)
