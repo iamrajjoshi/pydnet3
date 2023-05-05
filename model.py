@@ -102,10 +102,30 @@ class model(nn.Module):
                         self.G.load_state_dict(model_dict)
 
     def generate_image_left_(self, img, disp):
-       return apply_disparity(img, -disp)  
+        b, _, h, w = disp.size() 
+        i_range = torch.autograd.Variable(torch.linspace(-1.0, 1.0, h).view(1, h, 1).expand(1,h,w),requires_grad = False) # [1, H, W]  copy 0-height for w times : y coord
+        j_range = torch.autograd.Variable(torch.linspace(-1.0, 1.0, w).view(1, 1, w).expand(1,h,w),requires_grad = False) # [1, H, W]  copy 0-width for h times  : x coord
+
+        pixel_coords = torch.stack((j_range, i_range), dim=1).float().cuda()  # [1, 2, H, W]
+        batch_pixel_coords = pixel_coords[:,:,:,:].expand(b,2,h,w).contiguous().view(b, 2, -1)  # [B, 2, H*W]
+
+        X = batch_pixel_coords[:, 0, :]  + disp.contiguous().view(b,-1) # [B, H*W]
+        Y = batch_pixel_coords[:, 1, :]
+
+        X_norm = X 
+        Y_norm = Y  
+
+        pixel_coords = torch.stack([X_norm, Y_norm], dim=2)  # [B, H*W, 2]
+        pixel_coords = pixel_coords.view(b,h,w,2)  # [B, H, W, 2]
+
+        projected_img = torch.nn.functional.grid_sample(img, pixel_coords, padding_mode="border")
+
+        return projected_img
+    #    return apply_disparity(img, -disp)  
 
     def generate_image_right_(self, img, disp):
-        return apply_disparity(img, -disp)
+        return self.generate_image_left_(img, -disp)
+        # return apply_disparity(img, -disp)
 
     def gradient_x(self, img):
         gx = img[:, :, :, :-1] - img[:, :, :, 1:]
@@ -132,6 +152,25 @@ class model(nn.Module):
         smoothness_y = [torch.nn.functional.pad(k, (0, 0, 0, 1, 0, 0, 0, 0), mode='constant') for k in smoothness_y]
 
         return smoothness_x + smoothness_y
+
+    # ssim from Godard's code
+    def SSIM(self, x, y):
+        C1 = 0.01 ** 2
+        C2 = 0.03 ** 2
+
+        mu_x = nn.functional.avg_pool2d(x, 3, 1, padding=0)
+        mu_y = nn.functional.avg_pool2d(y, 3, 1, padding=0)
+
+        sigma_x = nn.functional.avg_pool2d(x ** 2, 3, 1, padding=0) - mu_x ** 2
+        sigma_y = nn.functional.avg_pool2d(y ** 2, 3, 1, padding=0) - mu_y ** 2
+
+        sigma_xy = nn.functional.avg_pool2d(x * y, 3, 1, padding=0) - mu_x * mu_y
+
+        SSIM_n = (2 * mu_x * mu_y + C1) * (2 * sigma_xy + C2)
+        SSIM_d = (mu_x ** 2 + mu_y ** 2 + C1) * (sigma_x + sigma_y + C2)
+
+        SSIM = SSIM_n / SSIM_d
+        return torch.clamp((1 - SSIM) / 2, 0, 1)
 
     # ssim from Po-Hsun Su
     def SSIM_(self, x, y):
@@ -194,8 +233,8 @@ class model(nn.Module):
         self.l1_right = [torch.abs(self.right_pyramid[i] - self.right_est[i]) for i in range(6)]
         self.l1_recomstruction_loss_right = [torch.mean(l) for l in self.l1_right]
 
-        self.ssim_loss_left = [self.SSIM_(self.left_est[i], self.left_pyramid[i]) for i in range(6)]
-        self.ssim_loss_right = [self.SSIM_(self.right_est[i], self.right_pyramid[i]) for i in range(6)]
+        self.ssim_loss_left = [self.SSIM(self.left_est[i], self.left_pyramid[i]) for i in range(6)]
+        self.ssim_loss_right = [self.SSIM(self.right_est[i], self.right_pyramid[i]) for i in range(6)]
 
         # WEIGTHED SUM
         self.image_loss_right = [0.85 * self.ssim_loss_right[i] + 0.15 * self.l1_recomstruction_loss_right[i] for i in
